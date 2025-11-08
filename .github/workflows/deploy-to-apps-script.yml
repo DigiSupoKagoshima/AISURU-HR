@@ -28,15 +28,7 @@ jobs:
           echo "=== debug: file info ==="
           ls -l $HOME/.clasprc.json || true
           wc -c $HOME/.clasprc.json || true
-          python3 - <<'PY'
-import json, os
-p = os.path.expanduser('~/.clasprc.json')
-try:
-    data = json.load(open(p))
-    print('JSON OK; keys:', list(data.keys()))
-except Exception as e:
-    print('JSON ERROR:', e)
-PY
+          node -e "const fs=require('fs');const p=process.env.HOME+'/.clasprc.json';try{const d=JSON.parse(fs.readFileSync(p,'utf8'));console.log('JSON OK; keys:',Object.keys(d));}catch(e){console.log('JSON ERROR:',e.message)}"
 
       - name: Push to Apps Script
         run: npx @google/clasp push
