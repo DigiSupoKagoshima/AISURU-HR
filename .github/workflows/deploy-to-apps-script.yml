@@ -4,6 +4,10 @@ on:
   push:
     branches: ["main"]
 
+# 任意改善: 最小権限
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,6 +18,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'               # 任意（依存の高速化）
 
       - name: Install clasp
         run: npm install -g @google/clasp
@@ -21,6 +26,7 @@ jobs:
       - name: Restore .clasprc.json
         shell: bash
         run: |
+          set -euo pipefail
           umask 077
           mkdir -p "$HOME"
           cat > "$HOME/.clasprc.json" <<'JSON'
@@ -28,19 +34,25 @@ ${{ secrets.CLASPRC_JSON }}
 JSON
           chmod 600 "$HOME/.clasprc.json"
 
-      - name: "Debug: check restored credentials (safe)"
+      - name: Debug: check restored credentials (safe)
+        shell: bash
         run: |
+          set -euo pipefail
           echo "=== debug: file info ==="
           ls -l "$HOME/.clasprc.json" || true
           wc -c "$HOME/.clasprc.json" || true
           node -e "const fs=require('fs');const p=(process.env.HOME||process.env.USERPROFILE)+'/.clasprc.json';try{const d=JSON.parse(fs.readFileSync(p,'utf8'));console.log('JSON OK; keys:',Object.keys(d));}catch(e){console.log('JSON ERROR:',e.message)}"
 
       - name: Push to Apps Script
+        shell: bash
         run: |
-          npx @google/clasp login --creds $HOME/.clasprc.json
+          set -euo pipefail
+          # OAuth トークンファイル (.clasprc.json) を直接利用するため login --creds は不要
           npx @google/clasp push
 
       - name: Create version and deploy
+        shell: bash
         run: |
+          set -euo pipefail
           npx @google/clasp version "CI: $GITHUB_SHA"
           npx @google/clasp deploy --description "CI deploy $GITHUB_SHA"
