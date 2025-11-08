@@ -18,15 +18,15 @@ jobs:
       - name: Install clasp
         run: npm install -g @google/clasp
 
-- name: Restore .clasprc.json
-  shell: bash
-  run: |
-    umask 077
-    mkdir -p "$HOME"
-    cat > "$HOME/.clasprc.json" <<'JSON'
-    ${{ secrets.CLASPRC_JSON }}
-    JSON
-    chmod 600 "$HOME/.clasprc.json"
+      - name: Restore .clasprc.json
+        shell: bash
+        run: |
+          umask 077
+          mkdir -p "$HOME"
+          cat > "$HOME/.clasprc.json" <<'JSON'
+          ${{ secrets.CLASPRC_JSON }}
+          JSON
+          chmod 600 "$HOME/.clasprc.json"
 
       - name: "Debug: check restored credentials (safe)"
         run: |
