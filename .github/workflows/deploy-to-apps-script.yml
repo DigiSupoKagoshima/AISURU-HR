@@ -23,7 +23,7 @@ jobs:
           echo "${{ secrets.CLASPRC_JSON }}" | tr -d '\r' > $HOME/.clasprc.json
           chmod 600 $HOME/.clasprc.json
 
-      - name: Debug: check restored credentials (safe)
+      - name: "Debug: check restored credentials (safe)"
         run: |
           echo "=== debug: file info ==="
           ls -l $HOME/.clasprc.json || true
