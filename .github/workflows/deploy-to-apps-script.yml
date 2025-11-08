@@ -31,7 +31,9 @@ jobs:
           node -e "const fs=require('fs');const p=(process.env.HOME||process.env.USERPROFILE)+'/.clasprc.json';try{const d=JSON.parse(fs.readFileSync(p,'utf8'));console.log('JSON OK; keys:',Object.keys(d));}catch(e){console.log('JSON ERROR:',e.message)}"
 
       - name: Push to Apps Script
-        run: npx @google/clasp push
+        run: |
+          npx @google/clasp login --creds $HOME/.clasprc.json
+          npx @google/clasp push
 
       - name: Create version and deploy
         run: |
