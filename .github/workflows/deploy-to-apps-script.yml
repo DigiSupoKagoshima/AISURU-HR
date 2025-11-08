@@ -19,9 +19,8 @@ jobs:
         run: npm install -g @google/clasp
 
       - name: Restore clasp auth
-        # CLASPRC_JSON should contain the exact contents of your local ~/.clasprc.json
         run: |
-          echo "${{ secrets.CLASPRC_JSON }}" > $HOME/.clasprc.json
+          echo "${{ secrets.CLASPRC_JSON }}" | tr -d '\r' > $HOME/.clasprc.json
           chmod 600 $HOME/.clasprc.json
 
       - name: Push to Apps Script
