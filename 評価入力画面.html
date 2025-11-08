@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>評価入力画面</title>
+  <style>
+    :root { --primary:#2b7cff; --muted:#666; --card-bg:#fff; --card-border:#e2e6ea; }
+    body { font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Arial, sans-serif; margin:20px; color:#222; background:#f7f8fa; min-height:100vh; padding-bottom:140px; }
+    .container { max-width:1200px; margin:0 auto; }
+    h1 { color:var(--primary); margin-bottom:8px; }
+    .card { background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; padding:14px; margin-bottom:16px; }
+    .row { display:flex; gap:12px; align-items:flex-start; }
+    .col { flex:1; }
+    .label { font-weight:700; margin-bottom:6px; color:#333; }
+    .attr-grid { display:grid; grid-template-columns: repeat(4,1fr); gap:12px; }
+    .attr-item { background:#fafafa; border:1px solid #ececec; padding:8px; border-radius:6px; min-height:48px; }
+    .small-muted { color:var(--muted); font-size:13px; }
+
+    table.eval-table { width:100%; border-collapse:collapse; margin-top:8px; table-layout:fixed; }
+    table.eval-table th, table.eval-table td { border:1px solid #e6e6e6; padding:8px; text-align:center; vertical-align:middle; overflow:hidden; }
+    table.eval-table th { background:#fafafa; font-weight:700; }
+    table.eval-table thead th.item { width:30%; text-align:left; }
+    table.eval-table thead th.result { width:30%; text-align:left; }
+    table.eval-table thead th.achi { width:8%; }
+    table.eval-table thead th.scorecol { width:8%; }
+
+    /* goal layout: label left, textarea right */
+    .goal-cell { text-align:left; vertical-align:top; padding:6px; }
+    .goal-row { display:flex; gap:10px; align-items:flex-start; }
+    .goal-row-label { flex:0 0 120px; font-weight:700; color:#333; padding-top:6px; }
+    .goal-row textarea { flex:1 1 auto; min-height:72px; resize:vertical; padding:6px; font-size:14px; box-sizing:border-box; width:100%; }
+
+    textarea.goal-text { width:100%; min-height:56px; resize:vertical; padding:6px; font-size:14px; box-sizing:border-box; }
+    input[type="number"].score { width:58px; padding:6px; font-size:14px; text-align:center; box-sizing:border-box; }
+    select.achi { padding:6px; font-size:14px; width:100%; box-sizing:border-box; }
+
+    .grade-cell { font-weight:700; text-align:center; vertical-align:middle; background:#fafafa; }
+
+    /* 役割列は item のみ表示（description は非表示／item 空なら description を代用） */
+    .role-cell { text-align:left; white-space:pre-wrap; font-weight:700; }
+
+    .btn { padding:8px 14px; border-radius:6px; border:0; cursor:pointer; font-weight:700; }
+    .btn-primary { background:var(--primary); color:#fff; }
+    .btn-secondary { background:#6c757d; color:#fff; }
+
+    textarea:focus, input:focus, select:focus, button:focus { outline:3px solid rgba(43,124,255,0.18); outline-offset:2px; }
+
+    .ime-ja { lang:ja; }
+    .section-title { font-weight:800; color:#0b5fb1; margin-bottom:8px; margin-top:6px; }
+    .comment-area textarea { width:85%; min-height:180px; padding:10px; resize:vertical; font-size:15px; box-sizing:border-box; margin:0 auto; display:block; }
+    .muted-label { color:#666; font-size:13px; margin-bottom:6px; display:block; }
+
+    #summary-area { display:flex; gap:12px; margin-top:12px; flex-wrap:wrap; }
+    #summary-area .summary-card { flex:1; background:#fff; border:1px solid #e6e6e6; border-radius:8px; padding:14px; min-width:180px; }
+    #summary-area .summary-card .title { color:#666; font-weight:700; margin-bottom:6px; }
+    #summary-area .summary-card .value { font-size:20px; font-weight:800; color:#111; }
+
+    #fixed-actions {
+      position:fixed;
+      right:20px;
+      bottom:20px;
+      z-index:1200;
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    #fixed-actions .btn { box-shadow:0 3px 8px rgba(0,0,0,0.12); }
+
+    @media (max-width: 900px) {
+      table.eval-table thead th.item { width: 40%; }
+      table.eval-table thead th.result { width: 40%; }
+      input[type="number"].score { width:48px; }
+      #fixed-actions { right:12px; bottom:12px; }
+      .comment-area textarea { width:100%; min-height:160px; }
+      .goal-row { flex-direction:column; }
+      .goal-row-label { flex:0 0 auto; padding-top:0; }
+    }
+
+    .president-input { font-size:18px; padding:6px 8px; width:120px; border-radius:6px; }
+  </style>
+
+  <!-- SafeMutationObserver ガード -->
+  <script>
+    (function(){
+      try {
+        if (typeof MutationObserver !== 'undefined' && MutationObserver.prototype && !MutationObserver.prototype.__safe_observe_installed__) {
+          var originalObserve = MutationObserver.prototype.observe;
+          MutationObserver.prototype.observe = function(target, options) {
+            try {
+              if (!target || typeof target !== 'object' || !(typeof Node !== 'undefined' ? target instanceof Node : target && target.nodeType)) {
+                console.warn('SafeMutationObserver: skipped observe on invalid target', target);
+                return;
+              }
+            } catch (e) {
+              if (!target || !target.nodeType) {
+                console.warn('SafeMutationObserver: skipped observe on invalid target (fallback)', target);
+                return;
+              }
+            }
+            return originalObserve.call(this, target, options);
+          };
+          MutationObserver.prototype.__safe_observe_installed__ = true;
+          console.info('SafeMutationObserver installed');
+        }
+      } catch (e) {
+        console.warn('SafeMutationObserver installation failed', e);
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h1>評価入力画面</h1>
+
+    <!-- Header -->
+    <div id="headerCard" class="card" aria-live="polite">
+      <div class="row">
+        <div class="col">
+          <div class="label">被評価者属性</div>
+          <div class="attr-grid" id="attrGrid">
+            <div class="attr-item"><div class="small-muted">所属</div><div id="attr-department">-</div></div>
+            <div class="attr-item"><div class="small-muted">氏名</div><div id="attr-name">-</div></div>
+            <div class="attr-item"><div class="small-muted">性別</div><div id="attr-gender">-</div></div>
+            <div class="attr-item"><div class="small-muted">生年月日</div><div id="attr-dob">-</div></div>
+
+            <div class="attr-item"><div class="small-muted">年齢</div><div id="attr-age">-</div></div>
+            <div class="attr-item"><div class="small-muted">等級</div><div id="attr-grade">-</div></div>
+            <div class="attr-item"><div class="small-muted">号</div><div id="attr-number">-</div></div>
+            <div class="attr-item"><div class="small-muted">勤続年数</div><div id="attr-tenure">-</div></div>
+          </div>
+        </div>
+
+        <div style="width:360px;">
+          <div class="label">対象期間</div>
+          <div id="hdr-period" class="attr-item">-</div>
+          <div style="height:10px;"></div>
+          <div class="label">所属長</div>
+          <div id="hdr-eval1" class="attr-item">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1. 目標達成評価 -->
+    <div id="goalCard" class="card" role="region" aria-labelledby="goalTitle">
+      <div id="goalTitle" class="section-title">1. 目標達成評価</div>
+      <table class="eval-table" aria-describedby="goal-desc">
+        <thead>
+          <tr>
+            <th class="item">評価項目</th>
+            <th class="result">結果</th>
+            <th class="achi">達成度</th>
+            <th class="scorecol">本人</th>
+            <th class="scorecol">評価者1</th>
+            <th class="scorecol">評価者2</th>
+            <th class="scorecol">評価者3</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-goal-key="A-1">
+            <td class="goal-cell">
+              <div class="goal-row">
+                <div class="goal-row-label">部門目標</div>
+                <textarea class="goal-text ime-ja" id="A1_item" data-field="item" placeholder="部門目標を入力"></textarea>
+              </div>
+            </td>
+            <td class="goal-cell">
+              <textarea class="goal-text ime-ja" id="A1_result" data-field="result" placeholder="結果を入力"></textarea>
+            </td>
+            <td><select id="A1_achi" class="achi"><option value="">--</option><option value="◎">◎</option><option value="◯">◯</option><option value="△">△</option><option value="✕">✕</option></select></td>
+            <td><input id="A1_self" class="score" type="number" min="0" max="10"></td>
+            <td><input id="A1_eval1" class="score" type="number" min="0" max="10"></td>
+            <td><input id="A1_eval2" class="score" type="number" min="0" max="10"></td>
+            <td><input id="A1_eval3" class="score" type="number" min="0" max="10"></td>
+          </tr>
+          <tr data-goal-key="A-2">
+            <td class="goal-cell">
+              <div class="goal-row">
+                <div class="goal-row-label">個人目標</div>
+                <textarea class="goal-text ime-ja" id="A2_item" data-field="item" placeholder="個人目標を入力"></textarea>
+              </div>
+            </td>
+            <td class="goal-cell">
+              <textarea class="goal-text ime-ja" id="A2_result" data-field="result" placeholder="結果を入力"></textarea>
+            </td>
+            <td><select id="A2_achi" class="achi"><option value="">--</option><option value="◎">◎</option><option value="◯">◯</option><option value="△">△</option><option value="✕">✕</option></select></td>
+            <td><input id="A2_self" class="score" type="number" min="0" max="10"></td>
+            <td><input id="A2_eval1" class="score" type="number" min="0" max="10"></td>
+            <td><input id="A2_eval2" class="score" type="number" min="0" max="10"></td>
+            <td><input id="A2_eval3" class="score" type="number" min="0" max="10"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 2. 等級評価（等級｜役割｜達成度｜本人｜評価者1｜評価者2｜評価者3） -->
+    <div id="gradeCard" class="card" role="region" aria-labelledby="gradeTitle">
+      <div id="gradeTitle" class="section-title">2. 等級評価</div>
+      <table class="eval-table" id="grade-table">
+        <thead>
+          <tr>
+            <th class="item">等級</th>
+            <th class="result">役割</th>
+            <th class="achi">達成度</th>
+            <th class="scorecol">本人</th>
+            <th class="scorecol">評価者1</th>
+            <th class="scorecol">評価者2</th>
+            <th class="scorecol">評価者3</th>
+          </tr>
+        </thead>
+        <tbody id="grade-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- 3. 能力評価 -->
+    <div id="capabilityCard" class="card" role="region" aria-labelledby="capabilityTitle">
+      <div id="capabilityTitle" class="section-title">3. 能力評価</div>
+      <table class="eval-table" id="capability-table">
+        <thead>
+          <tr>
+            <th class="item">評価項目</th>
+            <th class="result">評価内容</th>
+            <th class="achi">達成度</th>
+            <th class="scorecol">本人</th>
+            <th class="scorecol">評価者1</th>
+            <th class="scorecol">評価者2</th>
+            <th class="scorecol">評価者3</th>
+          </tr>
+        </thead>
+        <tbody id="capability-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- 4. 評価者所見 -->
+    <div id="commentCard" class="card" role="region" aria-labelledby="commentTitle">
+      <div id="commentTitle" class="section-title">4. 評価者所見</div>
+      <div class="row">
+        <div class="col">
+          <div class="muted-label" id="label_eval1">評価者1</div>
+          <div class="comment-area"><textarea id="comment_eval1" placeholder="評価者1の所見を入力"></textarea></div>
+        </div>
+        <div class="col">
+          <div class="muted-label" id="label_eval2">評価者2</div>
+          <div class="comment-area"><textarea id="comment_eval2" placeholder="評価者2の所見を入力"></textarea></div>
+        </div>
+        <div class="col">
+          <div class="muted-label" id="label_eval3">評価者3</div>
+          <div class="comment-area"><textarea id="comment_eval3" placeholder="評価者3の所見を入力"></textarea></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div id="summary-area" class="card" aria-labelledby="summaryTitle" style="padding:16px;">
+      <div class="summary-card">
+        <div class="title">評価者合計</div>
+        <div id="calc-evalsum-value" class="value">-</div>
+      </div>
+      <div class="summary-card">
+        <div class="title">社長評価点</div>
+        <div id="president-block">
+          <input id="calc-president-input" class="president-input" type="number" step="0.01" style="display:none;">
+          <div id="calc-president-value" class="value" style="display:inline-block; min-width:120px;">-</div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="title">合計評価点</div>
+        <div id="calc-sum-value" class="value">-</div>
+      </div>
+      <div class="summary-card">
+        <div class="title">総合評価</div>
+        <div>
+          <select id="calc-overall-select" style="font-size:18px;padding:6px 8px;border-radius:6px;">
+            <option value="">--</option>
+            <option value="S">S</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Fixed Save/Submit -->
+  <div id="fixed-actions" aria-hidden="false">
+    <button id="btn-save" class="btn btn-primary" title="保存">保存</button>
+    <button id="btn-submit" class="btn btn-secondary" title="提出">提出</button>
+  </div>
+
+  <!-- Template-injected initial data -->
+  <script>
+    try {
+      window.loggedIn = {
+        evaluationId: <?!= JSON.stringify(typeof evaluationId !== 'undefined' ? evaluationId : '') ?>,
+        userEmail:    <?!= JSON.stringify(typeof userEmail !== 'undefined' ? userEmail : '') ?>,
+        userRole:     <?!= JSON.stringify(typeof userRole !== 'undefined' ? userRole : '') ?>
+      };
+      var __EXEC_URL = <?!= JSON.stringify(typeof execUrl !== 'undefined' ? execUrl : '') ?>;
+    } catch(e) {
+      window.loggedIn = window.loggedIn || { evaluationId:'', userEmail:'', userRole:'' };
+      var __EXEC_URL = '';
+    }
+  </script>
+
+  <script>
+    // Utility helpers
+    function $(id){ return document.getElementById(id); }
+    function toNumberSafe(v){ var n = Number(v); return (v === '' || v === null || isNaN(n)) ? null : n; }
+    function escapeHtml(s){
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
+
+    function currentRole(){ return (window._serverRole || window.loggedIn.userRole || ''); }
+    function isEditableForField(fieldOwnerRole){
+      var role = currentRole();
+      if (!role) return false;
+      if (role === 'Admin') return true;
+      if (fieldOwnerRole === 'self' && role === 'Evaluee') return true;
+      if (fieldOwnerRole === 'eval1' && role === 'Evaluator1') return true;
+      if (fieldOwnerRole === 'eval2' && role === 'Evaluator2') return true;
+      if (fieldOwnerRole === 'eval3' && role === 'Evaluator3') return true;
+      return false;
+    }
+
+    // ナビゲーション: メインダッシュボードへ遷移
+    function goToMainDashboard(){
+      var base = (__EXEC_URL && typeof __EXEC_URL === 'string' && __EXEC_URL.length > 0)
+        ? __EXEC_URL.replace(/\/$/,'')
+        : (window.location.href.split('?')[0] || '');
+      var url = base + '?page=main';
+      try { window.top.location.href = url; } catch(e) { window.location.href = url; }
+    }
+
+    // ---- Renderers ----
+    function renderHeader(data){
+      var header = data.header || {};
+      var logged = data.loggedIn || {};
+      window._serverRole = logged.role || window.loggedIn.userRole || '';
+      $('hdr-period').textContent = header.period || '-';
+      $('attr-department').textContent = header.evalueeDepartment || '';
+      $('attr-name').textContent = header.evalueeName || '';
+      $('attr-gender').textContent = header.evalueeGender || '';
+      $('attr-dob').textContent = header.evalueeDob || '';
+      $('attr-grade').textContent = header.evalueeGrade || '';
+      $('attr-number').textContent = header.evalueeNumber || '';
+      $('hdr-eval1').textContent = header.eval1Name || '';
+      $('comment_eval1').value = header.comments && header.comments.eval1 ? header.comments.eval1 : '';
+      $('comment_eval2').value = header.comments && header.comments.eval2 ? header.comments.eval2 : '';
+      $('comment_eval3').value = header.comments && header.comments.eval3 ? header.comments.eval3 : '';
+      $('comment_eval1').disabled = !isEditableForField('eval1');
+      $('comment_eval2').disabled = !isEditableForField('eval2');
+      $('comment_eval3').disabled = !isEditableForField('eval3');
+      if (currentRole() === 'Admin'){ $('comment_eval1').disabled = $('comment_eval2').disabled = $('comment_eval3').disabled = false; }
+
+      // 年齢／勤続年数（堅牢）
+      function parseDateString(s){
+        if (!s && s !== 0) return null;
+        var d = new Date(s);
+        if (!isNaN(d)) return d;
+        try { var s2 = String(s).replace(/\//g, '-'); d = new Date(s2); if (!isNaN(d)) return d; } catch(e){}
+        try { var m = String(s).match(/(\d{4})[^\d]?(\d{1,2})[^\d]?(\d{1,2})/);
+          if (m) return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+        } catch(e){}
+        return null;
+      }
+      try {
+        if (header.evalueeDob){
+          var dob = parseDateString(header.evalueeDob);
+          $('attr-age').textContent = (dob && !isNaN(dob.getTime())) ? ((new Date()).getFullYear() - dob.getFullYear()) + '歳' : '-';
+        } else { $('attr-age').textContent = '-'; }
+        if (header.evalueeJoined){
+          var j = parseDateString(header.evalueeJoined);
+          $('attr-tenure').textContent = (j && !isNaN(j.getTime())) ? ((new Date()).getFullYear() - j.getFullYear()) + '年' : '-';
+        } else { $('attr-tenure').textContent = '-'; }
+      } catch(e){ console.warn(e); }
+
+      // ラベル
+      try {
+        var ev1 = header.eval1Name || header.eval1 || '';
+        var ev2 = header.eval2Name || header.eval2 || '';
+        var ev3 = header.eval3Name || header.eval3 || '';
+        var lbl1 = document.getElementById('label_eval1');
+        var lbl2 = document.getElementById('label_eval2');
+        var lbl3 = document.getElementById('label_eval3');
+        if (lbl1) lbl1.textContent = ev1 ? ('評価者1：' + ev1) : '評価者1';
+        if (lbl2) lbl2.textContent = ev2 ? ('評価者2：' + ev2) : '評価者2';
+        if (lbl3) lbl3.textContent = ev3 ? ('評価者3：' + ev3) : '評価者3';
+      } catch(e){ console.warn('renderHeader: set eval labels failed', e); }
+
+      // 社長評価点の表示/入力切替
+      var presVal = header.presidentScore != null ? header.presidentScore : (header.president || header['社長評価点'] || '');
+      var presInput = $('calc-president-input');
+      var presDiv = $('calc-president-value');
+      if (currentRole() === 'Admin') {
+        if (presInput) { presInput.style.display = ''; presInput.value = (presVal !== null && presVal !== undefined && presVal !== '') ? presVal : ''; }
+        if (presDiv) presDiv.style.display = 'none';
+      } else {
+        if (presInput) presInput.style.display = 'none';
+        if (presDiv) { presDiv.style.display = ''; presDiv.textContent = (presVal !== null && presVal !== undefined && presVal !== '') ? String(presVal) : '-'; }
+      }
+
+      var overallVal = header.totalRank || header.overall || header['総合評価'] || header.overallGrade || '';
+      var sel = $('calc-overall-select');
+      if (sel && overallVal) {
+        overallVal = String(overallVal).trim().toUpperCase();
+        if (['S','A','B','C'].indexOf(overallVal) !== -1) sel.value = overallVal;
+      }
+    }
+
+    // Goals
+    function renderGoalSection(data){
+      var details = data.details || {};
+      var hg = (data.header && data.header.goals) || {};
+      $('A1_item').value = (hg['A-1'] && hg['A-1'].goal) ? hg['A-1'].goal : (details['A-1'] && details['A-1'].item ? details['A-1'].item : '');
+      $('A1_result').value = (hg['A-1'] && hg['A-1'].result) ? hg['A-1'].result : (details['A-1'] && details['A-1'].result ? details['A-1'].result : '');
+      $('A1_achi').value = details['A-1'] && details['A-1'].achievement && details['A-1'].achievement.evaluee ? details['A-1'].achievement.evaluee : '';
+      $('A1_self').value = details['A-1'] && details['A-1'].score && details['A-1'].score.evaluee != null ? details['A-1'].score.evaluee : '';
+      $('A1_eval1').value = details['A-1'] && details['A-1'].score && details['A-1'].score.eval1 != null ? details['A-1'].score.eval1 : '';
+      $('A1_eval2').value = details['A-1'] && details['A-1'].score && details['A-1'].score.eval2 != null ? details['A-1'].score.eval2 : '';
+      $('A1_eval3').value = details['A-1'] && details['A-1'].score && details['A-1'].score.eval3 != null ? details['A-1'].score.eval3 : '';
+
+      $('A2_item').value = (hg['A-2'] && hg['A-2'].goal) ? hg['A-2'].goal : (details['A-2'] && details['A-2'].item ? details['A-2'].item : '');
+      $('A2_result').value = (hg['A-2'] && hg['A-2'].result) ? hg['A-2'].result : (details['A-2'] && details['A-2'].result ? details['A-2'].result : '');
+      $('A2_achi').value = details['A-2'] && details['A-2'].achievement && details['A-2'].achievement.evaluee ? details['A-2'].achievement.evaluee : '';
+      $('A2_self').value = details['A-2'] && details['A-2'].score && details['A-2'].score.evaluee != null ? details['A-2'].score.evaluee : '';
+      $('A2_eval1').value = details['A-2'] && details['A-2'].score && details['A-2'].score.eval1 != null ? details['A-2'].score.eval1 : '';
+      $('A2_eval2').value = details['A-2'] && details['A-2'].score && details['A-2'].score.eval2 != null ? details['A-2'].score.eval2 : '';
+      $('A2_eval3').value = details['A-2'] && details['A-2'].score && details['A-2'].score.eval3 != null ? details['A-2'].score.eval3 : '';
+
+      ['A1_item','A1_result','A1_achi','A2_item','A2_result','A2_achi'].forEach(id=>{ var e=$(id); if(e) e.disabled=false; });
+      ['A1_self','A1_eval1','A1_eval2','A1_eval3','A2_self','A2_eval1','A2_eval2','A2_eval3'].forEach(id=>{
+        var el=$(id); if(!el) return;
+        var owner = id.split('_')[1];
+        el.disabled = !isEditableForField(owner);
+      });
+      if (currentRole() === 'Admin') ['A1_self','A1_eval1','A1_eval2','A1_eval3','A2_self','A2_eval1','A2_eval2','A2_eval3'].forEach(id=>{var e=$(id); if(e) e.disabled=false; });
+      ['A1_self','A1_eval1','A1_eval2','A1_eval3','A2_self','A2_eval1','A2_eval2','A2_eval3'].forEach(id=>{
+        var el=$(id); if(!el) return; el.removeEventListener('input', combinedRecalc); el.addEventListener('input', combinedRecalc);
+      });
+      combinedRecalc();
+    }
+
+    // 等級評価（役割= item 表示のみ）
+    function renderGradeSection(){
+      if (!window._serverData || !Array.isArray(window._serverData.items)) return;
+      var items = window._serverData.items, details = window._serverData.details || {};
+      var gradeItems = items.filter(it => (it.category||'').indexOf('役割評価')!==-1 || (it.subCategory||'').indexOf('等級')!==-1 || (it.id && it.id.indexOf('B-')===0));
+      var tbody = $('grade-tbody'); tbody.innerHTML = '';
+      if (gradeItems.length === 0) return;
+
+      var rowspan = gradeItems.length;
+      var first = true;
+      var gradeLabel = (window._serverData && window._serverData.header && window._serverData.header.evalueeGrade) ? window._serverData.header.evalueeGrade : '';
+
+      gradeItems.forEach(it=>{
+        var id = it.id || '', title = (it.item||'').trim(), desc = (it.description||'').trim(), max = it.maxScore || 10, d = details[id] || {score:{}, achievement:{}};
+        var tr = document.createElement('tr'); tr.dataset.itemId = id;
+
+        var achiVal = d.achievement && d.achievement.evaluee ? d.achievement.evaluee : '';
+        var achiSelect = '<select id="'+id+'_achi" class="achi"><option value=""></option><option value="◎">◎</option><option value="◯">◯</option><option value="△">△</option><option value="✕">✕</option></select>';
+        function tdInput(suffix, val){ return '<td><input type="number" min="0" max="'+max+'" class="score" id="'+id+'_'+suffix+'" value="'+(val==null?'':String(val))+'"></td>'; }
+
+        var roleText = title || desc || '';
+        var roleHtml = '<div class="role-cell">' + escapeHtml(roleText) + '</div>';
+
+        if (first) {
+          tr.innerHTML =
+              '<td class="grade-cell" rowspan="'+rowspan+'">' + escapeHtml(gradeLabel) + '</td>'
+            + '<td>' + roleHtml + '</td>'
+            + '<td>'+achiSelect+'</td>'
+            + tdInput('self', d.score.evaluee)
+            + tdInput('eval1', d.score.eval1)
+            + tdInput('eval2', d.score.eval2)
+            + tdInput('eval3', d.score.eval3);
+          first = false;
+        } else {
+          tr.innerHTML =
+              '<td>' + roleHtml + '</td>'
+            + '<td>'+achiSelect+'</td>'
+            + tdInput('self', d.score.evaluee)
+            + tdInput('eval1', d.score.eval1)
+            + tdInput('eval2', d.score.eval2)
+            + tdInput('eval3', d.score.eval3);
+        }
+
+        tbody.appendChild(tr);
+
+        var s = document.getElementById(id+'_achi');
+        if (s && achiVal) s.value = achiVal;
+      });
+
+      Array.from(tbody.querySelectorAll('input.score')).forEach(inp=>{
+        var owner = inp.id.split('_')[1];
+        if (!isEditableForField(owner)) inp.disabled = true;
+        if (currentRole() === 'Admin') inp.disabled = false;
+        inp.removeEventListener('input', combinedRecalc);
+        inp.addEventListener('input', function(){ recalcGrade(); combinedRecalc(); });
+      });
+      Array.from(tbody.querySelectorAll('select.achi')).forEach(sel=>{
+        sel.disabled = false;
+        sel.removeEventListener('change', combinedRecalc);
+        sel.addEventListener('change', combinedRecalc);
+      });
+      recalcGrade();
+    }
+
+    function recalcGrade(){
+      var tbody = $('grade-tbody'); if(!tbody) return; var sum=0,count=0;
+      Array.from(tbody.querySelectorAll('input.score')).forEach(inp=>{ var v=toNumberSafe(inp.value); if(v!==null){sum+=v;count++;} });
+    }
+
+    function renderCapabilitySection(){
+      if (!window._serverData || !Array.isArray(window._serverData.items)) return;
+      var items = window._serverData.items, details = window._serverData.details || {};
+      var capItems = items.filter(it => (it.category||'').indexOf('能力評価')!==-1 || (it.subCategory||'').indexOf('能力')!==-1 || (it.id && /^C-/.test(it.id)));
+      var tbody = $('capability-tbody'); tbody.innerHTML = '';
+      capItems.forEach(it=>{
+        var id = it.id||'', title=it.item||'', desc=it.description||'', max=it.maxScore||5, d = details[id]||{score:{}, achievement:{}};
+        var tr=document.createElement('tr'); tr.dataset.itemId=id;
+        var achiVal = d.achievement && d.achievement.evaluee ? d.achievement.evaluee : '';
+        var achiSelect = '<select id="'+id+'_achi" class="achi"><option value=""></option><option value="◎">◎</option><option value="◯">◯</option><option value="△">△</option><option value="✕">✕</option></select>';
+        function mk(suffix,val){ return '<td><input type="number" min="0" max="'+max+'" class="score" id="'+id+'_'+suffix+'" value="'+(val==null?'':String(val))+'"></td>'; }
+        tr.innerHTML = '<td>'+escapeHtml(title)+'</td><td title="'+escapeHtml(desc)+'">'+escapeHtml(desc)+'</td>'
+                     + '<td>'+achiSelect+'</td>'
+                     + mk('self',d.score.evaluee) + mk('eval1',d.score.eval1) + mk('eval2',d.score.eval2) + mk('eval3',d.score.eval3);
+        tbody.appendChild(tr);
+        var s = document.getElementById(id+'_achi'); if (s && achiVal) s.value = achiVal;
+      });
+      Array.from(tbody.querySelectorAll('input.score')).forEach(inp=>{
+        var owner = inp.id.split('_')[1];
+        if (!isEditableForField(owner)) inp.disabled = true;
+        if (currentRole() === 'Admin') inp.disabled = false;
+        inp.removeEventListener('input', combinedRecalc);
+        inp.addEventListener('input', function(){ recalcCapability(); combinedRecalc(); });
+      });
+      Array.from(tbody.querySelectorAll('select.achi')).forEach(sel=>{
+        sel.disabled = false;
+        sel.removeEventListener('change', combinedRecalc);
+        sel.addEventListener('change', combinedRecalc);
+      });
+      recalcCapability();
+    }
+    function recalcCapability(){ var tbody=$('capability-tbody'); if(!tbody) return; var sum=0,count=0; Array.from(tbody.querySelectorAll('input.score')).forEach(inp=>{var v=toNumberSafe(inp.value); if(v!==null){sum+=v;count++;}}); }
+
+    // ---- Combined summary calculations ----
+    function combinedRecalc(){
+      var sumEval1 = 0, sumEval2 = 0, sumEval3 = 0;
+      var anyEvalValue = false;
+
+      Array.from(document.querySelectorAll('input.score')).forEach(function(inp){
+        var idParts = inp.id.split('_');
+        if (idParts.length < 2) return;
+        var owner = idParts[1]; // self, eval1, eval2, eval3
+        var raw = inp.value;
+        if (raw !== '' && raw !== null && typeof raw !== 'undefined') anyEvalValue = true;
+        var v = toNumberSafe(raw);
+        if (v === null) v = 0;
+        if (owner === 'eval1') sumEval1 += v;
+        else if (owner === 'eval2') sumEval2 += v;
+        else if (owner === 'eval3') sumEval3 += v;
+      });
+
+      var totalAllEvaluators = sumEval1 + sumEval2 + sumEval3;
+      var avgPerEvaluator = (totalAllEvaluators) / 3;
+      var evalSum50 = avgPerEvaluator * 0.5;
+
+      var elEvalSum = document.getElementById('calc-evalsum-value');
+      if (elEvalSum) {
+        elEvalSum.textContent = anyEvalValue ? (Math.round(evalSum50 * 100) / 100).toFixed(2) : '-';
+      }
+
+      // president score - if admin input exists use it, otherwise use displayed value
+      var presInput = $('calc-president-input');
+      var presDiv = $('calc-president-value');
+      var presNum = null;
+      if (presInput && presInput.style.display !== 'none') {
+        var pv = presInput.value;
+        presNum = (pv !== '' && pv !== null) ? parseFloat(pv) : NaN;
+      } else if (presDiv && presDiv.style.display !== 'none') {
+        var pd = presDiv.textContent;
+        presNum = (pd !== '' && pd !== '-') ? parseFloat(pd) : NaN;
+      }
+      var presExists = !isNaN(presNum);
+      var elPres = document.getElementById('calc-president-value');
+      if (elPres && presInput && presInput.style.display !== 'none') {
+        elPres.textContent = presExists ? (Math.round(presNum * 100) / 100).toFixed(2) : '-';
+      }
+
+      // 合計評価点 = 評価者合計 + 社長評価点
+      var elSum = document.getElementById('calc-sum-value');
+      if (elSum) {
+        if (!anyEvalValue && !presExists) elSum.textContent = '-';
+        else {
+          var partEval = anyEvalValue ? evalSum50 : 0;
+          var partPres = presExists ? presNum : 0;
+          var total = partEval + partPres;
+          elSum.textContent = (Math.round(total * 100) / 100).toFixed(2);
+        }
+      }
+    }
+
+    // ---- Payload building and saving ----
+    function appendGradeToPayload(payload){
+      var tbody = $('grade-tbody'); if(!tbody) return;
+      Array.from(tbody.querySelectorAll('tr')).forEach(tr=>{
+        var itemId = tr.dataset.itemId; if(!itemId) return;
+        payload.details[itemId] = payload.details[itemId] || {};
+        payload.details[itemId].score = {
+          evaluee: toNumberSafe((document.getElementById(itemId+'_self')||{}).value),
+          eval1: toNumberSafe((document.getElementById(itemId+'_eval1')||{}).value),
+          eval2: toNumberSafe((document.getElementById(itemId+'_eval2')||{}).value),
+          eval3: toNumberSafe((document.getElementById(itemId+'_eval3')||{}).value)
+        };
+        var achEl = document.getElementById(itemId + '_achi');
+        var achVal = achEl ? (achEl.value || '-') : '-';
+        payload.details[itemId].achievement = {
+          evaluee: achVal,
+          eval1: '-',
+          eval2: '-',
+          eval3: '-'
+        };
+      });
+    }
+    function appendCapabilityToPayload(payload){
+      var tbody = $('capability-tbody'); if(!tbody) return;
+      Array.from(tbody.querySelectorAll('tr')).forEach(tr=>{
+        var itemId = tr.dataset.itemId; if(!itemId) return;
+        payload.details[itemId] = payload.details[itemId] || {};
+        payload.details[itemId].score = {
+          evaluee: toNumberSafe((document.getElementById(itemId+'_self')||{}).value),
+          eval1: toNumberSafe((document.getElementById(itemId+'_eval1')||{}).value),
+          eval2: toNumberSafe((document.getElementById(itemId+'_eval2')||{}).value),
+          eval3: toNumberSafe((document.getElementById(itemId+'_eval3')||{}).value)
+        };
+        var achEl = document.getElementById(itemId + '_achi');
+        var achVal = achEl ? (achEl.value || '-') : '-';
+        payload.details[itemId].achievement = {
+          evaluee: achVal,
+          eval1: '-',
+          eval2: '-',
+          eval3: '-'
+        };
+      });
+    }
+
+    function buildSavePayload(isSubmit){
+      var payload = { evaluationId: (window.loggedIn && window.loggedIn.evaluationId) || '', details: {}, comments: {}, goals: {} };
+      payload.goals['A-1'] = { goal: $('A1_item').value || '', result: $('A1_result').value || '' };
+      payload.goals['A-2'] = { goal: $('A2_item').value || '', result: $('A2_result').value || '' };
+
+      payload.details['A-1'] = {
+        item: $('A1_item').value,
+        result: $('A1_result').value,
+        score: { evaluee: toNumberSafe($('A1_self').value), eval1: toNumberSafe($('A1_eval1').value), eval2: toNumberSafe($('A1_eval2').value), eval3: toNumberSafe($('A1_eval3').value) },
+        achievement: { evaluee: ($('A1_achi').value || '-'), eval1:'-', eval2:'-', eval3:'-' }
+      };
+      payload.details['A-2'] = {
+        item: $('A2_item').value,
+        result: $('A2_result').value,
+        score: { evaluee: toNumberSafe($('A2_self').value), eval1: toNumberSafe($('A2_eval1').value), eval2: toNumberSafe($('A2_eval2').value), eval3: toNumberSafe($('A2_eval3').value) },
+        achievement: { evaluee: ($('A2_achi').value || '-'), eval1:'-', eval2:'-', eval3:'-' }
+      };
+
+      appendGradeToPayload(payload);
+      appendCapabilityToPayload(payload);
+      payload.comments = { evaluee: '', eval1: $('comment_eval1').value || '', eval2: $('comment_eval2').value || '', eval3: $('comment_eval3').value || '' };
+
+      var presInput = $('calc-president-input');
+      var presVal = '';
+      if (presInput && presInput.style.display !== 'none') {
+        presVal = presInput.value !== '' ? presInput.value : '';
+      } else {
+        var presDiv = $('calc-president-value');
+        presVal = (presDiv && presDiv.textContent && presDiv.textContent !== '-') ? presDiv.textContent : '';
+      }
+      payload.presidentScore = presVal;
+
+      payload.overallGrade = ($('calc-overall-select') && $('calc-overall-select').value) ? $('calc-overall-select').value : '';
+      return payload;
+    }
+
+    function onSave(isSubmit){
+      var role = currentRole() || window.loggedIn.userRole || '';
+      var payload = buildSavePayload(isSubmit);
+
+      var btnSave = $('btn-save'), btnSubmit = $('btn-submit');
+      function setBusy(b){
+        if (btnSave) btnSave.disabled = b;
+        if (btnSubmit) btnSubmit.disabled = b;
+      }
+
+      try {
+        setBusy(true);
+        google.script.run
+          .withSuccessHandler(function(res){
+            try {
+              if (res && res.success) {
+                // 成功したら即メインダッシュボードへ遷移
+                goToMainDashboard();
+                return;
+              }
+              // 失敗時はメッセージを表示して再度編集可能に
+              alert('保存に失敗しました: ' + (res && res.message ? res.message : 'サーバエラー'));
+            } finally {
+              setBusy(false);
+            }
+          })
+          .withFailureHandler(function(err){
+            console.error('saveEvaluationData failure', err);
+            alert('通信エラーで保存できませんでした: ' + (err && err.message ? err.message : String(err)));
+            setBusy(false);
+          })
+          .saveEvaluationData(role, !!isSubmit, payload);
+      } catch(e){
+        console.error('save error', e);
+        alert('保存処理エラー: ' + (e && e.message ? e.message : String(e)));
+        setBusy(false);
+      }
+    }
+
+    // ---- Load from server (with debug logs) ----
+    function loadEvaluationData(){
+      if (!(window.google && google.script && google.script.run)) { console.warn('google.script.run not available'); return; }
+      var evalId = (window.loggedIn && window.loggedIn.evaluationId) || '';
+      var loginEmail = (window.loggedIn && window.loggedIn.userEmail) || '';
+      console.log('DEBUG: calling getEvaluationData', evalId, loginEmail);
+      google.script.run
+        .withSuccessHandler(function(res){
+          console.log('DEBUG getEvaluationData success', res);
+          try {
+            if (!res || typeof res.success === 'undefined') { console.error('invalid response', res); return; }
+            if (!res.success) { console.error('server error', res.message); return; }
+            window._serverData = res.data || {};
+            window._headerPresidentScore = window._serverData.header && window._serverData.header.presidentScore ? window._serverData.header.presidentScore : null;
+            renderHeader(window._serverData);
+            renderGoalSection(window._serverData);
+            renderGradeSection();
+            renderCapabilitySection();
+            combinedRecalc();
+          } catch (e) {
+            console.error('ERROR in successHandler render', e);
+          }
+        })
+        .withFailureHandler(function(err){
+          console.error('DEBUG getEvaluationData failure', err);
+        })
+        .getEvaluationData(evalId, loginEmail);
+    }
+
+    // ---- init handlers ----
+    document.addEventListener('DOMContentLoaded', function(){
+      $('btn-save').addEventListener('click', function(){ onSave(false); });
+      $('btn-submit').addEventListener('click', function(){ onSave(true); });
+
+      (function waitForAuth(){
+        var start = Date.now(), max = 3000;
+        (function p(){
+          if (window.loggedIn && window.loggedIn.evaluationId){ loadEvaluationData(); return; }
+          if (Date.now() - start > max){ console.warn('timed out waiting for loggedIn'); return; }
+          setTimeout(p,50);
+        })();
+      })();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>メインダッシュボード</title>
+  <style>
+    :root { --primary:#2b7cff; --muted:#666; --card-bg:#fff; --card-border:#e6eef8; }
+    body { font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Arial, sans-serif; margin:0; padding:20px; background:#f4f7fb; color:#222; }
+    .container { max-width:1200px; margin:0 auto; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+    h1 { color:var(--primary); margin:0; font-size:32px; }
+    .admin-link { margin-left:8px; text-decoration:none; padding:8px 12px; border-radius:6px; background:#0b74de; color:#fff; font-weight:700; display:inline-block; }
+    .admin-link.hidden { display:none; }
+    .card { background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; padding:14px; margin-bottom:16px; box-shadow: 0 2px 5px rgba(15,23,42,0.03); }
+    .muted { color:var(--muted); font-size:13px; }
+    #main-loading { padding:40px; text-align:center; color:var(--muted); font-size:18px; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    table th, table td { border:1px solid #e6e6e6; padding:8px; text-align:left; vertical-align:middle; }
+    table th { background:#fafafa; font-weight:700; }
+    .summary { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+    .summary .tile { background:#fff; border:1px solid #e6e6e6; padding:12px; border-radius:8px; min-width:160px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
+    .summary .title { color:var(--muted); font-weight:700; margin-bottom:6px; }
+    .summary .value { font-size:20px; font-weight:800; }
+    .btn { padding:8px 12px; border-radius:6px; border:0; cursor:pointer; background:var(--primary); color:#fff; }
+    @media (max-width:900px){ header{flex-direction:column;align-items:flex-start} }
+  </style>
+
+  <!-- SafeMutationObserver: 他スクリプトによる observe 呼び出しの例外を抑止 -->
+  <script>
+    (function(){
+      try {
+        if (typeof MutationObserver !== 'undefined' && MutationObserver.prototype && !MutationObserver.prototype.__safe_observe_installed__) {
+          var originalObserve = MutationObserver.prototype.observe;
+          MutationObserver.prototype.observe = function(target, options) {
+            try {
+              if (!target || typeof target !== 'object' || !(typeof Node !== 'undefined' ? target instanceof Node : target && target.nodeType)) {
+                return;
+              }
+            } catch (e) {
+              if (!target || !target.nodeType) return;
+            }
+            return originalObserve.call(this, target, options);
+          };
+          MutationObserver.prototype.__safe_observe_installed__ = true;
+        }
+      } catch (e) { /* no-op */ }
+    })();
+  </script>
+</head>
+<body>
+  <div class="container" role="main" aria-live="polite">
+    <header>
+      <div>
+        <a href="?page=main" style="color:var(--primary); text-decoration:none; display:inline-block; margin-bottom:6px;">&lt; メインダッシュボードに戻る</a>
+        <h1>メインダッシュボード</h1>
+        <div class="muted">あなたのタスクと部下のタスクを表示します</div>
+      </div>
+
+      <!-- 管理ダッシュボードへのリンク（Admin のときだけ表示） -->
+      <div style="align-self:flex-start;">
+        <a id="adminLink" class="admin-link hidden" href="#" title="管理ダッシュボードへ移動" rel="noopener noreferrer">管理ダッシュボード</a>
+      </div>
+    </header>
+
+    <div id="main-loading" class="card">読み込み中…</div>
+
+    <div id="dashboard-root" style="display:none;">
+      <div id="dashboard-summary" class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div><strong>ダッシュボード概要</strong><div class="muted">要約情報</div></div>
+          <div><button id="btn-refresh" class="btn">最新の情報に更新</button></div>
+        </div>
+        <div class="summary" id="summary-cards" style="margin-top:12px;">
+          <div class="tile"><div class="title">自分のタスク数</div><div id="myTaskCount" class="value">0</div></div>
+          <div class="tile"><div class="title">部下のタスク数</div><div id="subTaskCount" class="value">0</div></div>
+          <div class="tile"><div class="title">未完了（対応中）</div><div id="incompleteCount" class="value">0</div></div>
+        </div>
+      </div>
+
+      <div id="dashboard-mytask" class="card">
+        <strong>自分のタスク</strong>
+        <div id="mytask-area" style="margin-top:8px;">読み込み中...</div>
+      </div>
+
+      <div id="dashboard-sub" class="card">
+        <strong>部下のタスク一覧</strong>
+        <div id="subordinate-area" style="margin-top:8px;">読み込み中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- テンプレート注入データ -->
+  <script>
+    try {
+      window._templateData = {
+        userEmail: <?!= JSON.stringify(typeof userEmail !== 'undefined' ? userEmail : '') ?>,
+        userRole:  <?!= JSON.stringify(typeof userRole !== 'undefined' ? userRole : '') ?>,
+        execUrl:   <?!= JSON.stringify(typeof execUrl !== 'undefined' ? execUrl : '') ?>
+      };
+    } catch(e) {
+      window._templateData = { userEmail:'', userRole:'', execUrl:'' };
+    }
+  </script>
+
+  <script>
+    // DOM ヘルパ
+    function $(id){ return document.getElementById(id); }
+    function safeText(v){ return (v === null || v === undefined) ? '' : String(v); }
+
+    // 管理リンク初期化（サーバから注入された execUrl / userRole を使用）
+    (function initAdminLink(){
+      var tpl = window._templateData || {};
+      var link = $('adminLink');
+      if (!link) return;
+      if (tpl.execUrl && tpl.userRole && tpl.userRole === 'Admin') {
+        link.href = tpl.execUrl + '?page=admin';
+        link.classList.remove('hidden');
+      } else {
+        link.classList.add('hidden');
+      }
+    })();
+
+    // ダッシュボード描画
+    function renderDashboard(data){
+      if (!data) {
+        $('main-loading').textContent = 'データが取得できませんでした。';
+        return;
+      }
+      window._dashboardData = data; // デバッグで必要なら参照可能
+
+      $('main-loading').style.display = 'none';
+      $('dashboard-root').style.display = 'block';
+
+      // summary
+      $('myTaskCount').textContent = data.myTask ? 1 : 0;
+      $('subTaskCount').textContent = (Array.isArray(data.subordinateTasks) ? data.subordinateTasks.length : 0);
+      $('incompleteCount').textContent = (Array.isArray(data.subordinateTasks) ? data.subordinateTasks.length : 0);
+
+      // myTask
+      var myArea = $('mytask-area'); myArea.innerHTML = '';
+      if (data.myTask) {
+        var t = data.myTask;
+        myArea.innerHTML = '<table><thead><tr><th>評価ID</th><th>期間</th><th>状態</th><th>アクション</th></tr></thead><tbody>'
+            + '<tr><td>' + safeText(t.evaluationId) + '</td><td>' + safeText(t.period) + '</td><td>' + safeText(t.status) + '</td><td>' + safeText(t.requiredAction) + '</td></tr>'
+            + '</tbody></table>';
+      } else {
+        myArea.innerHTML = '<div class="muted">現在、あなたの未処理タスクはありません。</div>';
+      }
+
+      // subordinateTasks
+      var subArea = $('subordinate-area'); subArea.innerHTML = '';
+      var list = Array.isArray(data.subordinateTasks) ? data.subordinateTasks : [];
+      if (list.length === 0) {
+        subArea.innerHTML = '<div class="muted">該当する部下のタスクはありません。</div>';
+      } else {
+        var table = '<table><thead><tr><th>評価ID</th><th>期間</th><th>被評価者</th><th>状態</th><th>アクション</th></tr></thead><tbody>';
+        list.forEach(function(r){
+          table += '<tr><td>' + safeText(r.evaluationId) + '</td><td>' + safeText(r.period) + '</td><td>' + safeText(r.evalueeName || r.evaluee || '') + '</td><td>' + safeText(r.status) + '</td><td>' + safeText(r.requiredAction) + '</td></tr>';
+        });
+        table += '</tbody></table>';
+        subArea.innerHTML = table;
+      }
+    }
+
+    // サーバ呼び出し
+    function loadDashboard(){
+      if (!(window.google && google.script && google.script.run)) {
+        $('main-loading').textContent = '内部エラー: サーバとの通信ができません。実行URLで開いてください。';
+        return;
+      }
+      if (typeof google.script.run.getDashboardData !== 'function') {
+        $('main-loading').textContent = '内部エラー: サーバ側の関数が見つかりません。';
+        return;
+      }
+      $('main-loading').style.display = 'block';
+      google.script.run
+        .withSuccessHandler(function(res){
+          if (!res) {
+            $('main-loading').textContent = 'サーバ応答が無効です';
+            return;
+          }
+          if (res.data !== undefined) {
+            renderDashboard(res.data);
+          } else {
+            renderDashboard(res);
+          }
+        })
+        .withFailureHandler(function(err){
+          $('main-loading').textContent = 'サーバ呼び出しに失敗しました。';
+          console.error('getDashboardData failure', err);
+        })
+        .getDashboardData();
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      $('btn-refresh').addEventListener('click', loadDashboard);
+      // 少し遅延して読み込み（テンプレート注入の安定化）
+      setTimeout(loadDashboard, 50);
+    });
+  </script>
+</body>
+</html>

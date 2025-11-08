@@ -1,0 +1,23 @@
+﻿# clasp / Google credential を含めない
+.clasprc.json
+
+# node / npm
+node_modules/
+npm-debug.log
+
+# ローカルのバックアップや一時ファイル
+local_backup/
+*.BAK
+*.bak
+*.tmp
+*.log
+*.txt
+
+# OS/エディタゴミ
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 環境変数ファイル
+.env

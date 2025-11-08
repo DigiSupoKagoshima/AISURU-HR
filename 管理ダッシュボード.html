@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <style>
+    body { padding: 20px; }
+    h1 { font-size: 1.5em; border-bottom: 2px solid #005ab5; }
+    h2 { font-size: 1.2em; }
+    .stats-area { background: #f9f9f9; border: 1px solid #ddd; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+    .table th, .table td { vertical-align: middle; font-size: 0.9rem; }
+    #employee-modal .modal-body .form-group { margin-bottom: 0.5rem; }
+    #employee-modal .modal-body label { margin-bottom: 0.2rem; }
+    .error { color: red; font-weight: bold; }
+    .spinner-container { display: flex; align-items: center; justify-content: center; height: 100px; }
+  </style>
+</head>
+<body>
+<div class="container-fluid">
+  <div id="error-message" class="alert alert-danger" style="display: none;"></div>
+  <div id="loading" class="spinner-container">
+    <div class="spinner-border text-primary" role="status">
+      <span class="sr-only">Loading...</span>
+    </div>
+  </div>
+
+  <div id="main-content" style="display: none;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1>管理ダッシュボード</h1>
+      <button class="btn btn-info" onclick="loadPageData()">最新の情報に更新</button>
+    </div>
+
+    <h2>統計情報</h2>
+    <div class="stats-area row">
+      <div class="col-md-3">
+        <h5>総シート数</h5>
+        <p id="stats-total" class="h3">0</p>
+      </div>
+      <div class="col-md-3">
+        <h5>完了</h5>
+        <p id="stats-completed" class="h3 text-success">0</p>
+      </div>
+      <div class="col-md-3">
+        <h5>未完了 (対応中)</h5>
+        <p id="stats-pending" class="h3 text-danger">0</p>
+      </div>
+      <div class="col-md-3">
+        <h5>ステータス別</h5>
+        <ul id="stats-by-status" class="list-unstyled"></ul>
+      </div>
+    </div>
+
+    <h2>オペレーション</h2>
+    <div class="mb-3 p-3 border rounded">
+      <div class="row">
+        <div class="col-md-4">
+          <h5>評価シート一括作成</h5>
+          <button class="btn btn-primary" data-toggle="modal" data-target="#create-sheet-modal">新規作成</button>
+        </div>
+        <div class="col-md-4">
+          <h5>社員マスタ更新</h5>
+          <button class="btn btn-warning" data-toggle="modal" data-target="#csv-import-modal">CSVインポート</button>
+        </div>
+        <div class="col-md-4">
+          <h5>社員マスタ</h5>
+          <button class="btn btn-outline-primary" id="toggle-master-btn" onclick="toggleMasterArea()">社員マスタを表示</button>
+        </div>
+      </div>
+    </div>
+
+    <h2>評価一覧</h2>
+    <div class="table-responsive">
+      <table class="table table-striped table-hover table-sm">
+        <thead class="thead-dark">
+          <tr>
+            <th>評価ID</th>
+            <th>評価期間</th>
+            <th>社員ID</th>
+            <th>氏名</th>
+            <th>等級</th>
+            <th>ステータス</th>
+            <th>総合点</th>
+            <th>ランク</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="dashboard-tbody"></tbody>
+      </table>
+    </div>
+
+    <h2 id="master-title" style="display:none;margin-top:20px;">社員マスタ</h2>
+    <div id="employee-master-area" style="display:none; margin-bottom:20px;">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered" id="employee-master-table">
+          <thead>
+            <tr>
+              <th>社員ID</th><th>氏名</th><th>メール</th><th>所属</th><th>性別</th><th>生年月日</th><th>入社日</th><th>等級</th><th>評価者1</th><th>評価者2</th><th>評価者3</th><th>在籍状況</th>
+            </tr>
+          </thead>
+          <tbody id="employee-master-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- modals omitted content assumed same as before -->
+<div class="modal fade" id="create-sheet-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">評価シート一括作成</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>評価期間 (例: 2025下期)</label><input type="text" class="form-control" id="period" placeholder="2025下期"></div>
+      <div class="form-group"><label>対象期間 From (YYYY/MM/DD)</label><input type="text" class="form-control" id="period-from" placeholder="2025/10/01"></div>
+      <div class="form-group"><label>対象期間 To (YYYY/MM/DD)</label><input type="text" class="form-control" id="period-to" placeholder="2026/03/31"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-dismiss="modal">キャンセル</button><button class="btn btn-primary" onclick="createSheets()">作成実行</button></div>
+  </div></div>
+</div>
+
+<div class="modal fade" id="csv-import-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">社員マスタCSVインポート</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
+    <div class="modal-body">
+      <p class="text-danger">注意: 既存の社員マスタはすべて上書きされます。</p>
+      <div class="custom-file">
+        <input type="file" class="custom-file-input" id="csvFile" accept=".csv">
+        <label class="custom-file-label" for="csvFile">ファイル選択...</label>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-dismiss="modal">キャンセル</button><button class="btn btn-warning" onclick="importCSV()">インポート実行</button></div>
+  </div></div>
+</div>
+
+<div class="modal fade" id="status-change-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">ステータス変更</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
+    <div class="modal-body">
+      <p>評価ID: <strong id="status-change-evaluation-id"></strong></p>
+      <p>社員ID: <strong id="status-change-employee-id"></strong></p>
+      <div class="form-group"><label>新しいステータス:</label><select class="form-control" id="new-status-select"></select></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-dismiss="modal">キャンセル</button><button class="btn btn-warning" onclick="saveStatusChange()">変更を保存</button></div>
+  </div></div>
+</div>
+
+<div class="modal fade" id="employee-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">社員情報 (参照)</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
+    <div class="modal-body" id="employee-modal-body"><p>読み込み中...</p></div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-dismiss="modal">閉じる</button></div>
+  </div></div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script>
+  const STATUS_MAP = {
+    "1_本人入力中": "本人入力中",
+    "2_評価者1入力中": "評価者1入力中",
+    "3_評価者2入力中": "評価者2入力中",
+    "4_評価者3入力中": "評価者3入力中",
+    "5_最終確認中": "最終確認中 (管理)",
+    "6_完了": "完了"
+  };
+
+  // execUrl をテンプレート変数から受け取る（サーバ側で template.execUrl を注入）
+  const execUrlFromServer = <?!= JSON.stringify(typeof execUrl !== 'undefined' ? execUrl : '') ?>;
+  // adminData はサーバー側 template.adminData を安全に埋め込む
+  const adminData = <?!= JSON.stringify(typeof adminData !== 'undefined' ? adminData : null) ?>;
+
+  function buildBaseUrl() {
+    if (execUrlFromServer && typeof execUrlFromServer === 'string' && execUrlFromServer.length > 0) {
+      return execUrlFromServer.replace(/\/$/, '');
+    }
+    try {
+      return window.location.href.split('?')[0];
+    } catch (e) {
+      return '';
+    }
+  }
+  const baseExecUrl = buildBaseUrl();
+
+  document.addEventListener("DOMContentLoaded", function() {
+    loadPageData();
+    $('.custom-file-input').on('change', function() {
+      try {
+        var fileName = $(this).val().split('\\').pop();
+        if (!fileName) fileName = 'ファイル選択...';
+        $(this).siblings('.custom-file-label').addClass('selected').html(fileName);
+      } catch (e) {
+        console.error('File input label update failed:', e);
+      }
+    });
+  });
+
+  function handleGasError(error, context) {
+    console.error(context, error);
+    let message = `エラー (${context}): `;
+    if (error && error.message) {
+      message += error.message;
+    } else if (typeof error === 'string') {
+      message += error;
+    } else if (adminData && adminData.message) {
+      message += adminData.message;
+    } else {
+      message += '不明なエラーが発生しました。';
+    }
+    const errorDiv = document.getElementById('error-message');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('main-content').style.display = 'none';
+  }
+
+  function loadPageData() {
+    document.getElementById('loading').style.display = 'flex';
+    document.getElementById('main-content').style.display = 'none';
+    document.getElementById('error-message').style.display = 'none';
+
+    try {
+      if (!adminData) throw new Error('管理データがありません');
+      if (adminData.success) {
+        renderStats(adminData.statsData);
+        renderDashboard(adminData.dashboardData || []);
+        if (Array.isArray(adminData.masterData)) {
+          renderMasterTable(adminData.masterData);
+        }
+        document.getElementById('main-content').style.display = 'block';
+      } else {
+        handleGasError(adminData, "管理データ読み込み");
+      }
+    } catch (e) {
+      handleGasError(e, "ページ初期化 (adminData)");
+    } finally {
+      document.getElementById('loading').style.display = 'none';
+    }
+  }
+
+  function renderStats(statsData) {
+    if (!statsData) return;
+    document.getElementById('stats-total').textContent = statsData.totalCount || 0;
+    document.getElementById('stats-completed').textContent = statsData.completedCount || 0;
+    document.getElementById('stats-pending').textContent = statsData.pendingCount || 0;
+
+    const statusList = document.getElementById('stats-by-status');
+    statusList.innerHTML = '';
+    if (statsData.statusCounts) {
+      for (const status in statsData.statusCounts) {
+        const li = document.createElement('li');
+        li.textContent = `${STATUS_MAP[status] || status}: ${statsData.statusCounts[status]}件`;
+        statusList.appendChild(li);
+      }
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  function renderDashboard(dashboardData) {
+    const tbody = document.getElementById('dashboard-tbody');
+    tbody.innerHTML = '';
+    if (!dashboardData || dashboardData.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center">表示するデータがありません。</td></tr>';
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    dashboardData.forEach(row => {
+      if (!row) return;
+      const tr = document.createElement('tr');
+
+      const tdId = document.createElement('td');
+      const aId = document.createElement('a');
+      aId.href = '#';
+      aId.textContent = row.evaluationId || '';
+      aId.addEventListener('click', function(e) { e.preventDefault(); goToEvaluation(row.evaluationId); });
+      tdId.appendChild(aId);
+      tr.appendChild(tdId);
+
+      const tdPeriod = document.createElement('td'); tdPeriod.textContent = row.period || ''; tr.appendChild(tdPeriod);
+
+      const tdEmp = document.createElement('td');
+      const aEmp = document.createElement('a');
+      aEmp.href = '#';
+      aEmp.textContent = row.employeeId || '';
+      aEmp.addEventListener('click', function(e){ e.preventDefault(); showEmployeeModal(row.employeeId); });
+      tdEmp.appendChild(aEmp);
+      tr.appendChild(tdEmp);
+
+      const tdName = document.createElement('td'); tdName.textContent = row.employeeName || ''; tr.appendChild(tdName);
+
+      const tdGrade = document.createElement('td'); tdGrade.textContent = row.grade || ''; tr.appendChild(tdGrade);
+
+      const tdStatus = document.createElement('td');
+      const span = document.createElement('span');
+      span.className = 'badge ' + getStatusBadgeClass(row.status || '');
+      span.textContent = STATUS_MAP[row.status] || row.status || '';
+      tdStatus.appendChild(span);
+      tr.appendChild(tdStatus);
+
+      const tdScore = document.createElement('td'); tdScore.textContent = row.totalScore || ''; tr.appendChild(tdScore);
+      const tdRank = document.createElement('td'); tdRank.textContent = row.totalRank || ''; tr.appendChild(tdRank);
+
+      const tdOps = document.createElement('td');
+      const btnChange = document.createElement('button');
+      btnChange.className = 'btn btn-sm btn-secondary';
+      btnChange.textContent = '変更';
+      btnChange.addEventListener('click', function(){ openStatusChangeModal(row.evaluationId, row.employeeId, row.status); });
+      tdOps.appendChild(btnChange);
+
+      const btnDelete = document.createElement('button');
+      btnDelete.className = 'btn btn-sm btn-danger ml-2';
+      btnDelete.textContent = '削除';
+      btnDelete.addEventListener('click', function(){ deleteSheet(row.evaluationId, row.employeeId); });
+      tdOps.appendChild(btnDelete);
+
+      tr.appendChild(tdOps);
+
+      frag.appendChild(tr);
+    });
+
+    tbody.appendChild(frag);
+  }
+
+  function getStatusBadgeClass(status) {
+    if (status === '6_完了') return 'badge-success';
+    if (status === '1_本人入力中') return 'badge-primary';
+    if (status && status.startsWith('5_')) return 'badge-warning';
+    return 'badge-secondary';
+  }
+
+  function goToEvaluation(evaluationId) {
+    if (!evaluationId) return;
+    const base = baseExecUrl && baseExecUrl.length > 0 ? baseExecUrl : (window.location.href.split('?')[0] || '');
+    const url = base + '?page=evaluation&id=' + encodeURIComponent(evaluationId);
+    try { window.top.location.href = url; } catch (e) { window.location.href = url; }
+  }
+
+  // 改良版: 社員情報モーダル表示 (堅牢なハンドリング)
+  function showEmployeeModal(employeeId) {
+    if (!employeeId) return;
+    const modalBody = document.getElementById('employee-modal-body');
+    modalBody.innerHTML = '<p>読み込み中...</p>';
+    $('#employee-modal').modal('show');
+
+    google.script.run
+      .withSuccessHandler(response => {
+        try {
+          if (typeof response === 'string') {
+            modalBody.innerHTML = response;
+            return;
+          }
+          if (response && response.success === true && response.html) {
+            modalBody.innerHTML = response.html;
+            return;
+          }
+          const msg = response && response.message ? response.message : '社員情報の取得に失敗しました。';
+          modalBody.innerHTML = '<p class="text-danger">' + (escapeHtml(msg)) + '</p>';
+        } catch (e) {
+          modalBody.innerHTML = '<p class="text-danger">表示エラーが発生しました。</p>';
+          console.error('showEmployeeModal successHandler error', e);
+        }
+      })
+      .withFailureHandler(err => {
+        const errMsg = (err && err.message) ? err.message : String(err);
+        modalBody.innerHTML = '<p class="text-danger">通信エラー: ' + escapeHtml(errMsg) + '</p>';
+        console.error('showEmployeeModal failure', err);
+      })
+      .getEmployeeModalHtml(employeeId);
+  }
+
+  function renderMasterTable(masterData) {
+    const tbody = document.getElementById('employee-master-tbody');
+    tbody.innerHTML = '';
+    if (!masterData || masterData.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="12" class="text-center">社員マスタのデータがありません。</td></tr>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    masterData.forEach(emp => {
+      const tr = document.createElement('tr');
+      const td = v => { const t = document.createElement('td'); t.textContent = v == null ? '' : String(v); return t; };
+      tr.appendChild(td(emp.employeeId));
+      tr.appendChild(td(emp.name));
+      tr.appendChild(td(emp.email));
+      tr.appendChild(td(emp.department));
+      tr.appendChild(td(emp.gender));
+      tr.appendChild(td(emp.dob));
+      tr.appendChild(td(emp.joined));
+      tr.appendChild(td(emp.grade));
+      tr.appendChild(td(emp.eval1Id));
+      tr.appendChild(td(emp.eval2Id));
+      tr.appendChild(td(emp.eval3Id));
+      tr.appendChild(td(emp.status));
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+  }
+
+  function toggleMasterArea() {
+    const area = document.getElementById('employee-master-area');
+    const title = document.getElementById('master-title');
+    const btn = document.getElementById('toggle-master-btn');
+    if (area.style.display === 'none' || area.style.display === '') {
+      area.style.display = 'block';
+      title.style.display = 'block';
+      btn.textContent = '社員マスタを非表示';
+    } else {
+      area.style.display = 'none';
+      title.style.display = 'none';
+      btn.textContent = '社員マスタを表示';
+    }
+  }
+
+  // 即効対処スクリプト: 戻るリンクが無反応になる問題をキャプチャ段階で回避します
+  (function(){
+    function ensureBackLinks(){
+      var links = Array.from(document.querySelectorAll('a.back, a[a-back], a[data-back]'));
+      if (links.length === 0) {
+        links = Array.from(document.getElementsByTagName('a')).filter(a => (a.textContent||'').indexOf('ダッシュボード') !== -1);
+      }
+      if (links.length === 0) {
+        try {
+          var tmp = document.createElement('a');
+          tmp.id = 'backToDashboard_temp';
+          // ← ここを「メインダッシュボード」へ戻るように変更しました
+          var execBase = (typeof execUrlFromServer !== 'undefined' && execUrlFromServer) ? execUrlFromServer.replace(/\/$/,'') : (window.location.href.split('?')[0] || '');
+          tmp.href = execBase || window.location.href.split('?')[0];
+          tmp.textContent = '＜ メインダッシュボードに戻る';
+          tmp.className = 'back';
+          tmp.target = '_top';
+          tmp.style.cssText = 'display:inline-block;margin:12px;color:#2b7cff;cursor:pointer;position:relative;z-index:99999;';
+          document.body.insertBefore(tmp, document.body.firstChild);
+          links = [tmp];
+          console.log('Inserted temporary back link (to main)');
+        } catch(e) {
+          console.warn('Failed to insert temporary back link', e);
+        }
+      }
+      links.forEach(function(a){
+        try {
+          a.style.pointerEvents = 'auto';
+          a.style.zIndex = '99999';
+          a.setAttribute('role','link');
+          if (!a.hasAttribute('tabindex')) a.setAttribute('tabindex','0');
+          a.addEventListener('click', function(e){
+            if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            try { e.stopImmediatePropagation(); } catch(err) {}
+            var href = a.getAttribute('href') || (baseExecUrl || window.location.href.split('?')[0]);
+            try { window.top.location.href = href; } catch(err) { window.location.href = href; }
+          }, true);
+          a.addEventListener('keydown', function(e){
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              a.click();
+            }
+          });
+        } catch(e) {
+          console.warn('ensureBackLinks error for', a, e);
+        }
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', ensureBackLinks);
+    } else {
+      ensureBackLinks();
+    }
+  })();
+</script>
+</body>
+</html>
