@@ -1,4 +1,4 @@
-﻿name: Deploy to Google Apps Script
+name: Deploy to Google Apps Script
 
 on:
   push:
