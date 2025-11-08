@@ -1,0 +1,33 @@
+﻿name: Deploy to Google Apps Script
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp auth
+        # CLASPRC_JSON should contain the exact contents of your local ~/.clasprc.json
+        run: |
+          echo "${{ secrets.CLASPRC_JSON }}" > $HOME/.clasprc.json
+          chmod 600 $HOME/.clasprc.json
+
+      - name: Push to Apps Script
+        run: npx @google/clasp push
+
+      - name: Create version and deploy
+        run: |
+          npx @google/clasp version "CI: $GITHUB_SHA"
+          npx @google/clasp deploy --description "CI deploy $GITHUB_SHA"
