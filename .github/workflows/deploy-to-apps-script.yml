@@ -28,9 +28,8 @@ jobs:
           set -euo pipefail
           umask 077
           mkdir -p "$HOME"
-          cat > "$HOME/.clasprc.json" <<'JSON'
-${{ secrets.CLASPRC_JSON }}
-JSON
+          # Secret の JSON をそのまま書き込む（ヒアドキュメント不用）
+          printf '%s' '${{ secrets.CLASPRC_JSON }}' > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
 
       - name: Debug: check restored credentials (safe)
